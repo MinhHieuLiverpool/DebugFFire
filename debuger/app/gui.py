@@ -4,7 +4,10 @@ import queue
 import re
 import threading
 import tkinter as tk
+import urllib.error
+import urllib.request
 from tkinter import filedialog, messagebox
+from tkinter import ttk
 
 from player_tracker import follow_lines, parse_add_player_line
 
@@ -23,6 +26,16 @@ class PlayerTrackerApp:
         self.config_count_var = tk.StringVar(value="Configs: 0")
         self.overwrite_count_var = tk.StringVar(value="Overwrites: 0")
         self.banner_var = tk.StringVar(value="")
+        self.companion_ip_var = tk.StringVar(value="127.0.0.1:8000")
+        self._companion_map_path = os.path.join(
+            os.path.dirname(__file__),
+            "companion_map.json",
+        )
+        self._companion_map: dict[str, dict[str, tuple[int, int, int]]] = {
+            "team": {},
+            "player": {},
+            "booyah": {},
+        }
 
         self.log_init_var = tk.BooleanVar(value=True)
         self.log_add_var = tk.BooleanVar(value=True)
@@ -57,6 +70,7 @@ class PlayerTrackerApp:
         )
 
         self._build_ui()
+        self._load_companion_map()
         self._schedule_queue_pump()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -89,11 +103,20 @@ class PlayerTrackerApp:
         poll_entry = tk.Entry(options_row, width=8, textvariable=self.poll_var)
         poll_entry.pack(side="left", padx=6)
 
+        companion_label = tk.Label(options_row, text="Companion IP:")
+        companion_label.pack(side="left", padx=(8, 0))
+
+        companion_entry = tk.Entry(options_row, width=20, textvariable=self.companion_ip_var)
+        companion_entry.pack(side="left", padx=6)
+
         self.start_button = tk.Button(options_row, text="Start", command=self.start_tracking)
         self.start_button.pack(side="left", padx=6)
 
         self.stop_button = tk.Button(options_row, text="Stop", command=self.stop_tracking, state="disabled")
         self.stop_button.pack(side="left")
+
+        config_button = tk.Button(options_row, text="Config Companion", command=self.open_companion_dialog)
+        config_button.pack(side="left", padx=6)
 
         status_row = tk.Frame(self.root)
         status_row.pack(fill="x", padx=10)
@@ -186,6 +209,162 @@ class PlayerTrackerApp:
         if path:
             self.path_var.set(path)
 
+    def _load_companion_map(self) -> None:
+        if not os.path.isfile(self._companion_map_path):
+            self._companion_map = {"team": {}, "player": {}, "booyah": {}}
+            return
+
+        try:
+            with open(self._companion_map_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            self._companion_map = {}
+            return
+
+        self._companion_map = {"team": {}, "player": {}, "booyah": {}}
+        if "team" in data or "player" in data or "booyah" in data:
+            for section in ("team", "player", "booyah"):
+                section_data = data.get(section, {})
+                if isinstance(section_data, dict):
+                    for key, value in section_data.items():
+                        if isinstance(value, list) and len(value) == 3:
+                            self._companion_map[section][str(key)] = (
+                                int(value[0]),
+                                int(value[1]),
+                                int(value[2]),
+                            )
+                        elif isinstance(value, str) and value.count("/") == 2:
+                            parts = value.split("/")
+                            self._companion_map[section][str(key)] = (
+                                int(parts[0]),
+                                int(parts[1]),
+                                int(parts[2]),
+                            )
+        else:
+            for key, value in data.items():
+                if isinstance(value, list) and len(value) == 3:
+                    self._companion_map["team"][str(key)] = (
+                        int(value[0]),
+                        int(value[1]),
+                        int(value[2]),
+                    )
+                elif isinstance(value, str) and value.count("/") == 2:
+                    parts = value.split("/")
+                    self._companion_map["team"][str(key)] = (
+                        int(parts[0]),
+                        int(parts[1]),
+                        int(parts[2]),
+                    )
+
+    def _save_companion_map(self) -> None:
+        payload: dict[str, dict[str, list[int]]] = {
+            "team": {},
+            "player": {},
+            "booyah": {},
+        }
+        for section, items in self._companion_map.items():
+            for key, value in items.items():
+                payload[section][key] = [value[0], value[1], value[2]]
+
+        with open(self._companion_map_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=4, ensure_ascii=True)
+
+    def open_companion_dialog(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Companion Map")
+        dialog.geometry("520x420")
+
+        info_row = tk.Frame(dialog)
+        info_row.pack(fill="x", padx=10, pady=(10, 4))
+
+        info = tk.Label(
+            info_row,
+            text="Nhap map theo tung nhom (Team / Player / Booyah).",
+            anchor="w",
+        )
+        info.pack(side="left", fill="x", expand=True)
+
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(fill="both", expand=True, padx=10, pady=6)
+
+        team_text = tk.Text(notebook, wrap="none")
+        player_text = tk.Text(notebook, wrap="none")
+        booyah_text = tk.Text(notebook, wrap="none")
+
+        notebook.add(team_text, text="Team")
+        notebook.add(player_text, text="Player")
+        notebook.add(booyah_text, text="Booyah")
+
+        team_payload = {
+            k: f"{v[0]}/{v[1]}/{v[2]}" for k, v in self._companion_map.get("team", {}).items()
+        }
+        player_payload = {
+            k: f"{v[0]}/{v[1]}/{v[2]}" for k, v in self._companion_map.get("player", {}).items()
+        }
+        booyah_payload = {
+            k: f"{v[0]}/{v[1]}/{v[2]}" for k, v in self._companion_map.get("booyah", {}).items()
+        }
+
+        if not team_payload and not player_payload and not booyah_payload:
+            team_payload = {
+                "HEV": "1/0/0",
+                "WAG": "1/0/3",
+            }
+            player_payload = {
+                "HEV.ALAN": "1/0/1",
+            }
+            booyah_payload = {
+                "BOOYAH WAG": "1/0/2",
+            }
+
+        team_text.insert("1.0", json.dumps(team_payload, indent=4, ensure_ascii=True))
+        player_text.insert("1.0", json.dumps(player_payload, indent=4, ensure_ascii=True))
+        booyah_text.insert("1.0", json.dumps(booyah_payload, indent=4, ensure_ascii=True))
+
+        def on_save() -> None:
+            raw_team = team_text.get("1.0", "end").strip()
+            raw_player = player_text.get("1.0", "end").strip()
+            raw_booyah = booyah_text.get("1.0", "end").strip()
+
+            try:
+                team_data = json.loads(raw_team) if raw_team else {}
+                player_data = json.loads(raw_player) if raw_player else {}
+                booyah_data = json.loads(raw_booyah) if raw_booyah else {}
+            except json.JSONDecodeError:
+                messagebox.showerror("Invalid JSON", "JSON khong hop le.")
+                return
+
+            def parse_section(section_data: dict, section_name: str) -> dict[str, tuple[int, int, int]]:
+                result: dict[str, tuple[int, int, int]] = {}
+                for key, value in section_data.items():
+                    if not isinstance(value, str) or value.count("/") != 2:
+                        messagebox.showerror("Invalid format", f"Gia tri khong hop le: {section_name}.{key}")
+                        raise ValueError("Invalid format")
+                    parts = value.split("/")
+                    result[str(key)] = (int(parts[0]), int(parts[1]), int(parts[2]))
+                return result
+
+            try:
+                new_team = parse_section(team_data, "team")
+                new_player = parse_section(player_data, "player")
+                new_booyah = parse_section(booyah_data, "booyah")
+            except ValueError:
+                return
+
+            self._companion_map = {
+                "team": new_team,
+                "player": new_player,
+                "booyah": new_booyah,
+            }
+            self._save_companion_map()
+            dialog.destroy()
+
+        save_button = tk.Button(info_row, text="Save", command=on_save)
+        save_button.pack(side="right")
+
+        cancel_button = tk.Button(info_row, text="Cancel", command=dialog.destroy)
+        cancel_button.pack(side="right", padx=6)
+
     def start_tracking(self) -> None:
         path = self.path_var.get().strip()
         if not path:
@@ -227,18 +406,24 @@ class PlayerTrackerApp:
             if parsed:
                 player_id, name = parsed
                 self._queue.put(("config", (player_id, name)))
+                self._trigger_companion("player", name)
                 if self.log_add_var.get():
                     message = self._format_add_player(line, player_id, name)
                     if message:
                         self._queue.put(("log", message))
 
             init_match = self._init_tracking_pattern.search(line)
-            if init_match and self.log_init_var.get():
+            if init_match:
                 player_id = int(init_match.group(1))
                 name = init_match.group(2)
-                message = self._format_tracking(line, player_id, name)
-                if message:
-                    self._queue.put(("log", message))
+                team = self._extract_team(name)
+                if team:
+                    self._trigger_companion("team", team)
+                self._trigger_companion("player", name)
+                if self.log_init_var.get():
+                    message = self._format_tracking(line, player_id, name)
+                    if message:
+                        self._queue.put(("log", message))
 
             join_match = self._player_join_pattern.search(line)
             if join_match and self.log_join_var.get():
@@ -263,6 +448,10 @@ class PlayerTrackerApp:
                 message = self._format_team_cleared(line, is_team_last_kill)
                 if message:
                     self._queue.put(("log", message))
+                if is_team_last_kill:
+                    cleared_team = self._get_last_victim_team()
+                    if cleared_team:
+                        self._trigger_companion("team", cleared_team)
 
             match_last_kill = self._match_last_kill_pattern.search(line)
             if match_last_kill and self.log_match_var.get():
@@ -273,6 +462,11 @@ class PlayerTrackerApp:
                 banner = self._format_match_banner(is_last_kill)
                 if banner:
                     self._queue.put(("banner", banner))
+                if is_last_kill:
+                    booyah_team = self._get_last_killer_team()
+                    if booyah_team:
+                        booyah_label = f"BOOYAH {booyah_team}"
+                        self._trigger_companion("booyah", booyah_label)
 
     def _schedule_queue_pump(self) -> None:
         self._pump_queue()
@@ -487,16 +681,50 @@ class PlayerTrackerApp:
             return ""
 
         timestamp = self._extract_timestamp(line)
-        team = "Unknown"
-        if self._last_kill:
-            victim_id, _ = self._last_kill
-            victim_name = self._name_by_id.get(victim_id, "Unknown")
-            if victim_name != "Unknown":
-                team = self._extract_team(victim_name) or "Unknown"
+        team = self._get_last_victim_team() or "Unknown"
 
         if timestamp:
             return f"[{timestamp}] Team {team} CLEARED"
         return f"Team {team} CLEARED"
+
+    def _get_last_victim_team(self) -> str:
+        if not self._last_kill:
+            return ""
+        victim_id, _ = self._last_kill
+        victim_name = self._name_by_id.get(victim_id, "Unknown")
+        if victim_name == "Unknown":
+            return ""
+        return self._extract_team(victim_name)
+
+    def _get_last_killer_team(self) -> str:
+        if not self._last_kill:
+            return ""
+        _, killer_id = self._last_kill
+        killer_name = self._name_by_id.get(killer_id, "Unknown")
+        if killer_name == "Unknown":
+            return ""
+        return self._extract_team(killer_name)
+
+    def _trigger_companion(self, section: str, label: str) -> None:
+        if not label:
+            return
+        mapping = self._companion_map.get(section, {})
+        location = mapping.get(label)
+        if not location:
+            return
+
+        host = self.companion_ip_var.get().strip()
+        if not host:
+            return
+
+        page, row, col = location
+        url = f"http://{host}/api/location/{page}/{row}/{col}/press"
+        request = urllib.request.Request(url, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=2) as response:
+                response.read()
+        except urllib.error.URLError:
+            return
 
     def on_close(self) -> None:
         self._stop_event.set()

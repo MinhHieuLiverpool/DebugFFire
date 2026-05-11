@@ -3205,3 +3205,7 @@ OnTeamScoreChanged -> TeamID: 9 TeamScore: 5
 [2026-05-10 18:32:48.155][1][35335] [UMAData][SwitchEffect]effect :EFFECTTYPE_NONE
 [2026-05-10 18:32:48.155][1][35335] [AvatarManager][SwitchEffectInNoUMAClothCheck]player id:201326636 effect :EFFECTTYPE_NONE
 [2026-05-10 18:32:48.155][1][35335] @zwt, isMatchLastKill: True, isTeamLastKill: True, playableByConfig: False, SkinID: 181
+[2026-05-10 18:32:48.154][1][35335] Player 201326636 Dead, killed by 184549402
+[2026-05-10 18:32:48.154][1][35335] @zwt, isMatchLastKill: True, isTeamLastKill: True, playableByConfig: False, SkinID: 0
+[2026-05-10 18:32:48.154][1][35335] Player 201326636 Dead, killed by 184549402
+[2026-05-10 18:32:48.154][1][35335] @zwt, isMatchLastKill: True, isTeamLastKill: True, playableByConfig: False, SkinID: 0
