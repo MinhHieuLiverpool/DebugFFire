@@ -1,0 +1,12 @@
+[2026-05-10 21:06:32.988][1][33829] UpdateAvatarSlot: BuildCharacter
+[2026-05-10 21:06:32.988][1][33829] UpdateAvatarSlot: BuildCharacter
+[2026-05-10 21:06:32.988][1][33829] Player 150994956 Dead, killed by 184549414
+[2026-05-10 21:06:32.988][1][33829] @zwt, isMatchLastKill: True, isTeamLastKill: True, playableByConfig: True, SkinID: 0
+[2026-05-10 21:06:32.988][1][33829] @miao [feedback] ingame AddToQueue AceTeam Priority : 0
+[2026-05-10 21:06:32.988][1][33829] @miao [feedback] AddToQueue AceTeam
+[2026-05-10 21:06:32.999][1][33829] [SpawnOrDelGodEffect] isGameShow:True skillShowGod:False
+[2026-05-10 21:06:32.999][1][33829] [Player][SwitchEffect]player id:150994956 effectType :EFFECTTYPE_NONE
+[2026-05-10 21:06:32.999][1][33829] [AvatarManager][SwitchEffect]player id:150994956 effectType :EFFECTTYPE_NONE
+[2026-05-10 21:06:32.999][1][33829] [UMAData][SwitchEffect]effect :EFFECTTYPE_NONE
+[2026-05-10 21:06:32.999][1][33829] [AvatarManager][SwitchEffectInNoUMAClothCheck]player id:150994956 effect :EFFECTTYPE_NONE
+[2026-05-10 21:06:32.999][1][33829] @zwt, isMatchLastKill: True, isTeamLastKill: True, playableByConfig: False, SkinID: 21002
