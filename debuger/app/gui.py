@@ -153,12 +153,17 @@ class PlayerTrackerApp:
         logs_list_frame = tk.Frame(logs_frame)
         logs_list_frame.pack(fill="both", expand=True)
 
-        self.logs_listbox = tk.Listbox(logs_list_frame)
-        self.logs_listbox.pack(side="left", fill="both", expand=True)
+        self.logs_text = tk.Text(logs_list_frame, wrap="none", height=20)
+        self.logs_text.pack(side="left", fill="both", expand=True)
+        self.logs_text.configure(state="disabled")
 
-        logs_scrollbar = tk.Scrollbar(logs_list_frame, command=self.logs_listbox.yview)
+        self.logs_text.tag_configure("team", foreground="blue")
+        self.logs_text.tag_configure("killer", foreground="darkgreen")
+        self.logs_text.tag_configure("victim", foreground="darkred")
+
+        logs_scrollbar = tk.Scrollbar(logs_list_frame, command=self.logs_text.yview)
         logs_scrollbar.pack(side="right", fill="y")
-        self.logs_listbox.configure(yscrollcommand=logs_scrollbar.set)
+        self.logs_text.configure(yscrollcommand=logs_scrollbar.set)
 
         self.root.after(150, self._set_initial_sash)
 
@@ -285,8 +290,7 @@ class PlayerTrackerApp:
             elif target == "banner":
                 self.banner_var.set(text)
             else:
-                self.logs_listbox.insert("end", text)
-                self.logs_listbox.see("end")
+                self._append_log(text)
 
     def _upsert_config(self, player_id: int, name: str) -> None:
         overwritten = False
@@ -365,9 +369,7 @@ class PlayerTrackerApp:
     def _format_match_state(self, line: str, is_last_kill: bool) -> str:
         timestamp = self._extract_timestamp(line)
         if not is_last_kill:
-            if timestamp:
-                return f"[{timestamp}] Match Pending..."
-            return "Match Pending..."
+            return ""
 
         team = "Unknown"
         killer_name = "Unknown"
@@ -383,7 +385,7 @@ class PlayerTrackerApp:
 
     def _format_match_banner(self, is_last_kill: bool) -> str:
         if not is_last_kill:
-            return "PENDING..."
+            return ""
 
         team = "Unknown"
         if self._last_kill:
@@ -393,6 +395,92 @@ class PlayerTrackerApp:
                 team = self._extract_team(killer_name) or "Unknown"
 
         return f"BOOYAH - TEAM: {team}"
+
+    def _append_log(self, text: str) -> None:
+        self.logs_text.configure(state="normal")
+        if " KILLED BY " in text:
+            self._append_kill_log(text)
+        else:
+            self._append_generic_log(text)
+        self.logs_text.configure(state="disabled")
+        self.logs_text.see("end")
+
+    def _append_generic_log(self, text: str) -> None:
+        team_marker = "Team: "
+        name_marker = "Name: "
+
+        if team_marker not in text and name_marker not in text:
+            self.logs_text.insert("end", text + "\n")
+            return
+
+        idx = 0
+        while idx < len(text):
+            if name_marker in text[idx:]:
+                name_pos = text.find(name_marker, idx)
+            else:
+                name_pos = -1
+
+            if team_marker in text[idx:]:
+                team_pos = text.find(team_marker, idx)
+            else:
+                team_pos = -1
+
+            next_pos = -1
+            if name_pos != -1 and team_pos != -1:
+                next_pos = min(name_pos, team_pos)
+            elif name_pos != -1:
+                next_pos = name_pos
+            elif team_pos != -1:
+                next_pos = team_pos
+
+            if next_pos == -1:
+                self.logs_text.insert("end", text[idx:])
+                break
+
+            self.logs_text.insert("end", text[idx:next_pos])
+            if next_pos == name_pos:
+                self.logs_text.insert("end", name_marker)
+                value_start = next_pos + len(name_marker)
+                value_end = text.find(",", value_start)
+                if value_end == -1:
+                    value_end = len(text)
+                self.logs_text.insert("end", text[value_start:value_end], "killer")
+                idx = value_end
+            else:
+                self.logs_text.insert("end", team_marker)
+                value_start = next_pos + len(team_marker)
+                value_end = text.find(",", value_start)
+                if value_end == -1:
+                    value_end = len(text)
+                self.logs_text.insert("end", text[value_start:value_end], "team")
+                idx = value_end
+
+        self.logs_text.insert("end", "\n")
+
+    def _append_kill_log(self, text: str) -> None:
+        marker = " KILLED BY "
+        marker_pos = text.find(marker)
+        if marker_pos == -1:
+            self.logs_text.insert("end", text + "\n")
+            return
+
+        left = text[:marker_pos]
+        right = text[marker_pos + len(marker):]
+
+        last_space = left.rfind(" ")
+        if last_space == -1:
+            self.logs_text.insert("end", left + marker)
+            self.logs_text.insert("end", right, "killer")
+            self.logs_text.insert("end", "\n")
+            return
+
+        prefix = left[: last_space + 1]
+        victim = left[last_space + 1:]
+        self.logs_text.insert("end", prefix)
+        self.logs_text.insert("end", victim, "victim")
+        self.logs_text.insert("end", marker)
+        self.logs_text.insert("end", right, "killer")
+        self.logs_text.insert("end", "\n")
 
     def _format_team_cleared(self, line: str, is_team_last_kill: bool) -> str:
         if not is_team_last_kill:

@@ -13948,6 +13948,7 @@
 [2026-05-10 18:29:44.709][1][29776] OnTeamScoreChanged -> TeamID: 5 TeamScore: 6
 [2026-05-10 18:29:44.709][1][29776] OnTeamScoreChanged -> TeamID: 2 TeamScore: 6
 [2026-05-10 18:29:44.709][1][29776] OnTeamScoreChanged -> TeamID: 9 TeamScore: 5
+OnTeamScoreChanged -> TeamID: 9 TeamScore: 5
 [2026-05-10 18:28:47.587][1][28045] OnTeamScoreChanged -> TeamID: 9 TeamScore: 4
 [2026-05-10 18:28:47.587][1][28045] OnTeamScoreChanged -> TeamID: 8 TeamScore: 4
 [2026-05-10 18:28:47.587][1][28045] OnTeamScoreChanged -> TeamID: 12 TeamScore: 3
