@@ -22,11 +22,13 @@ class PlayerTrackerApp:
         self.status_var = tk.StringVar(value="Idle")
         self.config_count_var = tk.StringVar(value="Configs: 0")
         self.overwrite_count_var = tk.StringVar(value="Overwrites: 0")
+        self.banner_var = tk.StringVar(value="")
 
         self.log_init_var = tk.BooleanVar(value=True)
         self.log_add_var = tk.BooleanVar(value=True)
         self.log_join_var = tk.BooleanVar(value=True)
         self.log_dead_var = tk.BooleanVar(value=True)
+        self.log_match_var = tk.BooleanVar(value=True)
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -35,6 +37,7 @@ class PlayerTrackerApp:
         self._name_by_id: dict[int, str] = {}
         self._overwrite_count = 0
         self._total_configs = 0
+        self._last_kill: tuple[int, int] | None = None
 
         self._timestamp_pattern = re.compile(r"^\[(\d{4}-\d{2}-\d{2}[^\]]+)\]")
         self._init_tracking_pattern = re.compile(
@@ -45,6 +48,9 @@ class PlayerTrackerApp:
         )
         self._player_dead_pattern = re.compile(
             r"Player\s+(\d+)\s+Dead,\s+killed\s+by\s+(\d+)"
+        )
+        self._match_last_kill_pattern = re.compile(
+            r"@zwt,\s+isMatchLastKill:\s+(True|False)"
         )
 
         self._build_ui()
@@ -58,6 +64,9 @@ class PlayerTrackerApp:
 
         path_label = tk.Label(header, text="Log file:")
         path_label.pack(anchor="w")
+
+        banner_label = tk.Label(header, textvariable=self.banner_var, fg="green")
+        banner_label.pack(anchor="e")
 
         path_row = tk.Frame(header)
         path_row.pack(fill="x", pady=4)
@@ -134,6 +143,9 @@ class PlayerTrackerApp:
 
         dead_check = tk.Checkbutton(logs_filters, text="Player Dead", variable=self.log_dead_var)
         dead_check.pack(side="left", padx=4)
+
+        match_check = tk.Checkbutton(logs_filters, text="Match End", variable=self.log_match_var)
+        match_check.pack(side="left", padx=4)
 
         logs_list_frame = tk.Frame(logs_frame)
         logs_list_frame.pack(fill="both", expand=True)
@@ -232,9 +244,20 @@ class PlayerTrackerApp:
             if dead_match and self.log_dead_var.get():
                 victim_id = int(dead_match.group(1))
                 killer_id = int(dead_match.group(2))
+                self._last_kill = (victim_id, killer_id)
                 message = self._format_player_dead(line, victim_id, killer_id)
                 if message:
                     self._queue.put(("log", message))
+
+            match_last_kill = self._match_last_kill_pattern.search(line)
+            if match_last_kill and self.log_match_var.get():
+                is_last_kill = match_last_kill.group(1) == "True"
+                message = self._format_match_state(line, is_last_kill)
+                if message:
+                    self._queue.put(("log", message))
+                banner = self._format_match_banner(is_last_kill)
+                if banner:
+                    self._queue.put(("banner", banner))
 
     def _schedule_queue_pump(self) -> None:
         self._pump_queue()
@@ -249,6 +272,8 @@ class PlayerTrackerApp:
             if target == "config":
                 player_id, name = text
                 self._upsert_config(player_id, name)
+            elif target == "banner":
+                self.banner_var.set(text)
             else:
                 self.logs_listbox.insert("end", text)
                 self.logs_listbox.see("end")
@@ -326,6 +351,38 @@ class PlayerTrackerApp:
         if timestamp:
             return f"[{timestamp}] {victim_name} KILLED BY {killer_name}"
         return f"{victim_name} KILLED BY {killer_name}"
+
+    def _format_match_state(self, line: str, is_last_kill: bool) -> str:
+        timestamp = self._extract_timestamp(line)
+        if not is_last_kill:
+            if timestamp:
+                return f"[{timestamp}] Match Pending..."
+            return "Match Pending..."
+
+        team = "Unknown"
+        killer_name = "Unknown"
+        if self._last_kill:
+            _, killer_id = self._last_kill
+            killer_name = self._name_by_id.get(killer_id, "Unknown")
+            if killer_name != "Unknown":
+                team = self._extract_team(killer_name) or "Unknown"
+
+        if timestamp:
+            return f"[{timestamp}] BOOYAH - Team: {team} (Killer: {killer_name})"
+        return f"BOOYAH - Team: {team} (Killer: {killer_name})"
+
+    def _format_match_banner(self, is_last_kill: bool) -> str:
+        if not is_last_kill:
+            return "PENDING..."
+
+        team = "Unknown"
+        if self._last_kill:
+            _, killer_id = self._last_kill
+            killer_name = self._name_by_id.get(killer_id, "Unknown")
+            if killer_name != "Unknown":
+                team = self._extract_team(killer_name) or "Unknown"
+
+        return f"BOOYAH - TEAM: {team}"
 
     def on_close(self) -> None:
         self._stop_event.set()
