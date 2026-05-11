@@ -52,6 +52,9 @@ class PlayerTrackerApp:
         self._match_last_kill_pattern = re.compile(
             r"@zwt,\s+isMatchLastKill:\s+(True|False)"
         )
+        self._team_last_kill_pattern = re.compile(
+            r"isTeamLastKill:\s+(True|False)"
+        )
 
         self._build_ui()
         self._schedule_queue_pump()
@@ -249,6 +252,13 @@ class PlayerTrackerApp:
                 if message:
                     self._queue.put(("log", message))
 
+            team_last_kill = self._team_last_kill_pattern.search(line)
+            if team_last_kill and self.log_match_var.get():
+                is_team_last_kill = team_last_kill.group(1) == "True"
+                message = self._format_team_cleared(line, is_team_last_kill)
+                if message:
+                    self._queue.put(("log", message))
+
             match_last_kill = self._match_last_kill_pattern.search(line)
             if match_last_kill and self.log_match_var.get():
                 is_last_kill = match_last_kill.group(1) == "True"
@@ -383,6 +393,22 @@ class PlayerTrackerApp:
                 team = self._extract_team(killer_name) or "Unknown"
 
         return f"BOOYAH - TEAM: {team}"
+
+    def _format_team_cleared(self, line: str, is_team_last_kill: bool) -> str:
+        if not is_team_last_kill:
+            return ""
+
+        timestamp = self._extract_timestamp(line)
+        team = "Unknown"
+        if self._last_kill:
+            victim_id, _ = self._last_kill
+            victim_name = self._name_by_id.get(victim_id, "Unknown")
+            if victim_name != "Unknown":
+                team = self._extract_team(victim_name) or "Unknown"
+
+        if timestamp:
+            return f"[{timestamp}] Team {team} CLEARED"
+        return f"Team {team} CLEARED"
 
     def on_close(self) -> None:
         self._stop_event.set()
