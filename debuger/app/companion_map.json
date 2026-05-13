@@ -44,5 +44,22 @@
             0,
             5
         ]
+    },
+    "team_cleared": {
+        "TEAM BRU CLEARED": [
+            1,
+            2,
+            0
+        ],
+        "TEAM AVD CLEARED": [
+            1,
+            2,
+            1
+        ],
+        "TEAM EVOS CLEARED": [
+            1,
+            2,
+            2
+        ]
     }
 }

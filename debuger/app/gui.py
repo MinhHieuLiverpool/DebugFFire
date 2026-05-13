@@ -35,6 +35,7 @@ class PlayerTrackerApp:
             "team": {},
             "player": {},
             "booyah": {},
+            "team_cleared": {},
         }
 
         self.log_init_var = tk.BooleanVar(value=True)
@@ -183,6 +184,7 @@ class PlayerTrackerApp:
         self.logs_text.tag_configure("team", foreground="blue")
         self.logs_text.tag_configure("killer", foreground="darkgreen")
         self.logs_text.tag_configure("victim", foreground="darkred")
+        self.logs_text.tag_configure("team_clear", foreground="darkorange3")
 
         logs_scrollbar = tk.Scrollbar(logs_list_frame, command=self.logs_text.yview)
         logs_scrollbar.pack(side="right", fill="y")
@@ -211,7 +213,12 @@ class PlayerTrackerApp:
 
     def _load_companion_map(self) -> None:
         if not os.path.isfile(self._companion_map_path):
-            self._companion_map = {"team": {}, "player": {}, "booyah": {}}
+            self._companion_map = {
+                "team": {},
+                "player": {},
+                "booyah": {},
+                "team_cleared": {},
+            }
             return
 
         try:
@@ -221,9 +228,14 @@ class PlayerTrackerApp:
             self._companion_map = {}
             return
 
-        self._companion_map = {"team": {}, "player": {}, "booyah": {}}
-        if "team" in data or "player" in data or "booyah" in data:
-            for section in ("team", "player", "booyah"):
+        self._companion_map = {
+            "team": {},
+            "player": {},
+            "booyah": {},
+            "team_cleared": {},
+        }
+        if any(key in data for key in ("team", "player", "booyah", "team_cleared")):
+            for section in ("team", "player", "booyah", "team_cleared"):
                 section_data = data.get(section, {})
                 if isinstance(section_data, dict):
                     for key, value in section_data.items():
@@ -261,6 +273,7 @@ class PlayerTrackerApp:
             "team": {},
             "player": {},
             "booyah": {},
+            "team_cleared": {},
         }
         for section, items in self._companion_map.items():
             for key, value in items.items():
@@ -288,10 +301,12 @@ class PlayerTrackerApp:
         notebook.pack(fill="both", expand=True, padx=10, pady=6)
 
         team_text = tk.Text(notebook, wrap="none")
+        team_cleared_text = tk.Text(notebook, wrap="none")
         player_text = tk.Text(notebook, wrap="none")
         booyah_text = tk.Text(notebook, wrap="none")
 
         notebook.add(team_text, text="Team")
+        notebook.add(team_cleared_text, text="Team Cleared")
         notebook.add(player_text, text="Player")
         notebook.add(booyah_text, text="Booyah")
 
@@ -304,8 +319,11 @@ class PlayerTrackerApp:
         booyah_payload = {
             k: f"{v[0]}/{v[1]}/{v[2]}" for k, v in self._companion_map.get("booyah", {}).items()
         }
+        team_cleared_payload = {
+            k: f"{v[0]}/{v[1]}/{v[2]}" for k, v in self._companion_map.get("team_cleared", {}).items()
+        }
 
-        if not team_payload and not player_payload and not booyah_payload:
+        if not team_payload and not player_payload and not booyah_payload and not team_cleared_payload:
             team_payload = {
                 "HEV": "1/0/0",
                 "WAG": "1/0/3",
@@ -316,18 +334,24 @@ class PlayerTrackerApp:
             booyah_payload = {
                 "BOOYAH WAG": "1/0/2",
             }
+            team_cleared_payload = {
+                "WAG": "1/0/4",
+            }
 
         team_text.insert("1.0", json.dumps(team_payload, indent=4, ensure_ascii=True))
+        team_cleared_text.insert("1.0", json.dumps(team_cleared_payload, indent=4, ensure_ascii=True))
         player_text.insert("1.0", json.dumps(player_payload, indent=4, ensure_ascii=True))
         booyah_text.insert("1.0", json.dumps(booyah_payload, indent=4, ensure_ascii=True))
 
         def on_save() -> None:
             raw_team = team_text.get("1.0", "end").strip()
+            raw_team_cleared = team_cleared_text.get("1.0", "end").strip()
             raw_player = player_text.get("1.0", "end").strip()
             raw_booyah = booyah_text.get("1.0", "end").strip()
 
             try:
                 team_data = json.loads(raw_team) if raw_team else {}
+                team_cleared_data = json.loads(raw_team_cleared) if raw_team_cleared else {}
                 player_data = json.loads(raw_player) if raw_player else {}
                 booyah_data = json.loads(raw_booyah) if raw_booyah else {}
             except json.JSONDecodeError:
@@ -346,6 +370,7 @@ class PlayerTrackerApp:
 
             try:
                 new_team = parse_section(team_data, "team")
+                new_team_cleared = parse_section(team_cleared_data, "team_cleared")
                 new_player = parse_section(player_data, "player")
                 new_booyah = parse_section(booyah_data, "booyah")
             except ValueError:
@@ -353,6 +378,7 @@ class PlayerTrackerApp:
 
             self._companion_map = {
                 "team": new_team,
+                "team_cleared": new_team_cleared,
                 "player": new_player,
                 "booyah": new_booyah,
             }
@@ -451,7 +477,14 @@ class PlayerTrackerApp:
                 if is_team_last_kill:
                     cleared_team = self._get_last_victim_team()
                     if cleared_team:
-                        self._trigger_companion("team", cleared_team)
+                        cleared_labels = (
+                            cleared_team,
+                            f"Team {cleared_team} CLEARED",
+                            f"{cleared_team} CLEARED",
+                            f"TEAM {cleared_team} CLEARED",
+                        )
+                        for label in cleared_labels:
+                            self._trigger_companion("team_cleared", label)
 
             match_last_kill = self._match_last_kill_pattern.search(line)
             if match_last_kill and self.log_match_var.get():
@@ -592,12 +625,28 @@ class PlayerTrackerApp:
 
     def _append_log(self, text: str) -> None:
         self.logs_text.configure(state="normal")
-        if " KILLED BY " in text:
+        if "Team " in text and " CLEARED" in text:
+            self._append_team_cleared_log(text)
+        elif " KILLED BY " in text:
             self._append_kill_log(text)
         else:
             self._append_generic_log(text)
         self.logs_text.configure(state="disabled")
         self.logs_text.see("end")
+
+    def _append_team_cleared_log(self, text: str) -> None:
+        marker = "Team "
+        start = text.find(marker)
+        if start == -1:
+            self.logs_text.insert("end", text + "\n")
+            return
+
+        prefix = text[:start]
+        highlight = text[start:]
+
+        self.logs_text.insert("end", prefix)
+        self.logs_text.insert("end", highlight, "team_clear")
+        self.logs_text.insert("end", "\n")
 
     def _append_generic_log(self, text: str) -> None:
         team_marker = "Team: "
