@@ -10,11 +10,15 @@ export type ZoneStat = {
   end?: string
   teams: TeamStat[]
   totalKills: number
+  booyahTeam?: string
+  booyahTime?: string
 }
 
 const ZONE_PRE_SHRINK = /Zone\s+(\d+)\s+trang\s+thai:\s*ZONE_TYPE_PRE_SHRINK/i
+const ZONE_STABLE = /Zone\s+(\d+)\s+trang\s+thai:\s*ZONE_TYPE_STABLE/i
 const KILL_EVENT = /(\S+)\s+KILLED BY\s+(\S+)/i
 const TEAM_CLEARED = /Team\s+(\S+)\s+CLEARED/i
+const BOOYAH_EVENT = /BOOYAH\s*-\s*Team:\s*(\S+)/i
 
 const extractTimestamp = (line: string) => {
   const match = line.match(/^\[([^\]]+)\]/)
@@ -49,6 +53,8 @@ export const parseZones = (rawText: string): ZoneStat[] => {
     end?: string
     teams: Map<string, TeamStat>
     totalKills: number
+    booyahTeam?: string
+    booyahTime?: string
   }> = []
   let current: (typeof zones)[number] | null = null
 
@@ -59,9 +65,11 @@ export const parseZones = (rawText: string): ZoneStat[] => {
     const timestamp = extractTimestamp(trimmed)
     const body = stripTimestamp(trimmed)
 
+    const stableMatch = body.match(ZONE_STABLE)
     const preMatch = body.match(ZONE_PRE_SHRINK)
-    if (preMatch) {
-      const zoneNumber = Number(preMatch[1])
+    const zoneMatch = stableMatch ?? preMatch
+    if (zoneMatch) {
+      const zoneNumber = Number(zoneMatch[1])
       if (
         current &&
         current.zone === zoneNumber &&
@@ -86,7 +94,11 @@ export const parseZones = (rawText: string): ZoneStat[] => {
 
     const killMatch = body.match(KILL_EVENT)
     if (killMatch) {
+      const victimTeam = extractTeam(killMatch[1])
       const killerTeam = extractTeam(killMatch[2])
+      if (killerTeam && victimTeam && killerTeam === victimTeam) {
+        continue
+      }
       const stat = getOrCreateTeam(current.teams, killerTeam)
       if (stat) {
         stat.kills += 1
@@ -100,6 +112,14 @@ export const parseZones = (rawText: string): ZoneStat[] => {
       const stat = getOrCreateTeam(current.teams, teamName)
       if (stat) {
         stat.cleared = true
+      }
+    }
+
+    const booyahMatch = body.match(BOOYAH_EVENT)
+    if (booyahMatch && !current.booyahTeam) {
+      current.booyahTeam = booyahMatch[1]
+      if (timestamp) {
+        current.booyahTime = timestamp
       }
     }
   }
@@ -118,6 +138,8 @@ export const parseZones = (rawText: string): ZoneStat[] => {
       end: zone.end,
       teams,
       totalKills: zone.totalKills,
+      booyahTeam: zone.booyahTeam,
+      booyahTime: zone.booyahTime,
     }
   })
 }
