@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  color-scheme: light;
+  background-color: #0b0d17;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, rgba(103, 65, 202, 0.35), transparent 55%),
+    radial-gradient(circle at 20% 20%, rgba(17, 207, 228, 0.2), transparent 45%),
+    #0b0d17;
+}
+
+#root {
+  min-height: 100vh;
+}

@@ -43,6 +43,7 @@ class PlayerTrackerApp:
         self.log_join_var = tk.BooleanVar(value=True)
         self.log_dead_var = tk.BooleanVar(value=True)
         self.log_match_var = tk.BooleanVar(value=True)
+        self.log_zone_var = tk.BooleanVar(value=True)
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -52,6 +53,7 @@ class PlayerTrackerApp:
         self._overwrite_count = 0
         self._total_configs = 0
         self._last_kill: tuple[int, int] | None = None
+        self._last_zone_stage: int | None = None
 
         self._timestamp_pattern = re.compile(r"^\[(\d{4}-\d{2}-\d{2}[^\]]+)\]")
         self._init_tracking_pattern = re.compile(
@@ -68,6 +70,9 @@ class PlayerTrackerApp:
         )
         self._team_last_kill_pattern = re.compile(
             r"isTeamLastKill:\s+(True|False)"
+        )
+        self._zone_status_pattern = re.compile(
+            r"Update m_ZoneStatus : stageID = (\d+).+?InnerRadius = (\d+).+?TimeSpanType = (\S+)"
         )
 
         self._build_ui()
@@ -174,6 +179,9 @@ class PlayerTrackerApp:
         match_check = tk.Checkbutton(logs_filters, text="Match End", variable=self.log_match_var)
         match_check.pack(side="left", padx=4)
 
+        zone_check = tk.Checkbutton(logs_filters, text="Zone Status", variable=self.log_zone_var)
+        zone_check.pack(side="left", padx=4)
+
         logs_list_frame = tk.Frame(logs_frame)
         logs_list_frame.pack(fill="both", expand=True)
 
@@ -185,6 +193,7 @@ class PlayerTrackerApp:
         self.logs_text.tag_configure("killer", foreground="darkgreen")
         self.logs_text.tag_configure("victim", foreground="darkred")
         self.logs_text.tag_configure("team_clear", foreground="darkorange3")
+        self.logs_text.tag_configure("zone_status", foreground="purple4")
 
         logs_scrollbar = tk.Scrollbar(logs_list_frame, command=self.logs_text.yview)
         logs_scrollbar.pack(side="right", fill="y")
@@ -501,6 +510,15 @@ class PlayerTrackerApp:
                         booyah_label = f"BOOYAH {booyah_team}"
                         self._trigger_companion("booyah", booyah_label)
 
+            zone_match = self._zone_status_pattern.search(line)
+            if zone_match and self.log_zone_var.get():
+                stage_id = int(zone_match.group(1))
+                inner_radius = int(zone_match.group(2))
+                zone_type = zone_match.group(3)
+                message = self._format_zone_status(line, stage_id, inner_radius, zone_type)
+                if message:
+                    self._queue.put(("log", message))
+
     def _schedule_queue_pump(self) -> None:
         self._pump_queue()
         self.root.after(100, self._schedule_queue_pump)
@@ -629,10 +647,16 @@ class PlayerTrackerApp:
             self._append_team_cleared_log(text)
         elif " KILLED BY " in text:
             self._append_kill_log(text)
+        elif "Zone " in text and "InnerRadius=" in text:
+            self._append_zone_log(text)
         else:
             self._append_generic_log(text)
         self.logs_text.configure(state="disabled")
         self.logs_text.see("end")
+
+    def _append_zone_log(self, text: str) -> None:
+        self.logs_text.insert("end", text, "zone_status")
+        self.logs_text.insert("end", "\n")
 
     def _append_team_cleared_log(self, text: str) -> None:
         marker = "Team "
@@ -699,6 +723,37 @@ class PlayerTrackerApp:
                 idx = value_end
 
         self.logs_text.insert("end", "\n")
+
+    def _format_zone_status(
+        self,
+        line: str,
+        stage_id: int,
+        inner_radius: int,
+        zone_type: str,
+    ) -> str:
+        timestamp = self._extract_timestamp(line)
+        zone_number = stage_id + 1
+
+        if zone_type == "ZONE_TYPE_PRE_SHRINK":
+            if stage_id == 0 and self._last_zone_stage is None:
+                message = f"Dang trong Zone {zone_number}"
+            else:
+                message = f"Ket thuc Zone {stage_id}, Bat dau Zone {zone_number}"
+        elif zone_type == "ZONE_TYPE_SHRINK":
+            message = f"Zone {zone_number} dang thu"
+            if inner_radius == 0:
+                message = f"Zone {zone_number} dang thu (ban kinh = 0)"
+        elif zone_type == "ZONE_TYPE_RANDOM_PREMOVE":
+            message = f"Zone {zone_number} chuan bi di chuyen"
+        elif zone_type == "ZONE_TYPE_RANDOM_MOVE":
+            message = f"Zone {zone_number} dang di chuyen"
+        else:
+            message = f"Zone {zone_number} trang thai: {zone_type}"
+
+        self._last_zone_stage = stage_id
+        if timestamp:
+            return f"[{timestamp}] {message} (InnerRadius={inner_radius})"
+        return f"{message} (InnerRadius={inner_radius})"
 
     def _append_kill_log(self, text: str) -> None:
         marker = " KILLED BY "
