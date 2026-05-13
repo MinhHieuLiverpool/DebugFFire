@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 
 const AppLayout = () => (
   <div className="min-h-screen bg-ink font-body text-white">
@@ -15,7 +15,18 @@ const AppLayout = () => (
             </h1>
           </div>
           <nav className="flex items-center gap-3 text-xs uppercase tracking-[0.3em] text-white/60">
-            <span className="rounded-full border border-white/10 px-3 py-1">Analyzer</span>
+            <Link 
+              to="/" 
+              className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 hover:text-white transition"
+            >
+              Analyzer
+            </Link>
+            <Link 
+              to="/overlay" 
+              className="rounded-full border border-white/10 px-3 py-1 hover:bg-white/5 hover:text-white transition"
+            >
+              Overlay
+            </Link>
           </nav>
         </header>
 

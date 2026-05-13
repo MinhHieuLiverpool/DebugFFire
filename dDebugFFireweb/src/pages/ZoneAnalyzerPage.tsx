@@ -1,4 +1,5 @@
-import { type ChangeEvent, useMemo, useState } from 'react'
+import { type ChangeEvent, useMemo, useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import SummaryCard from '../components/SummaryCard'
 import ZoneTable from '../components/ZoneTable'
 import { parseZones } from '../utils/zoneParser'
@@ -58,8 +59,148 @@ const ZoneAnalyzerPage = () => {
     reader.readAsText(file)
   }
 
+  const [isOverlayPlaying, setIsOverlayPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0) // Visual time 0-56
+  const [speed, setSpeed] = useState(1)
+  const timerRef = useRef<number | null>(null)
+
+  const ZONE_DURATION = 5 
+  const MAX_ZONES = 8
+  const VIRTUAL_END_TIME = MAX_ZONES * ZONE_DURATION
+
+  const startTime = useMemo(() => {
+    if (zones.length === 0) return 0
+    return new Date(zones[0].start.replace(' ', 'T')).getTime()
+  }, [zones])
+
+  const endTime = useMemo(() => {
+    if (zones.length === 0) return 0
+    const lastZone = zones[zones.length - 1]
+    const endStr = lastZone.end || lastZone.start
+    return new Date(endStr.replace(' ', 'T')).getTime() + 60000 
+  }, [zones])
+
+  useEffect(() => {
+    localStorage.setItem('overlay_playing', String(isOverlayPlaying))
+    localStorage.setItem('overlay_current_time', String(currentTime))
+    localStorage.setItem('overlay_speed', String(speed))
+    localStorage.setItem('overlay_start_time', '0')
+    localStorage.setItem('overlay_end_time', String(VIRTUAL_END_TIME))
+  }, [isOverlayPlaying, currentTime, speed, VIRTUAL_END_TIME])
+
+  useEffect(() => {
+    if (isOverlayPlaying) {
+      const interval = 100 
+      timerRef.current = window.setInterval(() => {
+        setCurrentTime(prev => {
+          const next = prev + (interval / 1000) * speed
+          if (next >= VIRTUAL_END_TIME) {
+            setIsOverlayPlaying(false)
+            return VIRTUAL_END_TIME
+          }
+          return next
+        })
+      }, interval)
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current) }
+  }, [isOverlayPlaying, speed, VIRTUAL_END_TIME])
+
+  const restart = () => {
+    setIsOverlayPlaying(false)
+    setCurrentTime(0)
+    localStorage.setItem('overlay_command', 'restart_' + Date.now())
+  }
+
   return (
     <section className="flex flex-col gap-6">
+      {zones.length > 0 && (
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-md flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsOverlayPlaying(!isOverlayPlaying)}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition active:scale-95 ${
+                  isOverlayPlaying ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-green-500/20 text-green-400 border border-green-500/30'
+                }`}
+              >
+                {isOverlayPlaying ? 'Stop Overlay' : 'Start Overlay'}
+              </button>
+              
+              <button 
+                onClick={restart}
+                className="px-6 py-2.5 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+              >
+                Restart
+              </button>
+
+              <div className="h-8 w-[1px] bg-white/10 mx-2" />
+
+              <div className="flex items-center gap-3">
+                 <span className="text-xs text-white/40 uppercase font-bold">Speed</span>
+                 <select 
+                   value={speed} 
+                   onChange={(e) => setSpeed(Number(e.target.value))}
+                   className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-sm outline-none"
+                 >
+                   {[1, 5, 10, 50, 100].map(s => <option key={s} value={s}>{s}x</option>)}
+                 </select>
+              </div>
+            </div>
+
+            <div className="flex gap-8">
+              <div className="text-right">
+                <div className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Total Duration</div>
+                <div className="text-lg font-mono font-bold">
+                   {Math.floor((endTime - startTime) / 60000)}m {Math.floor(((endTime - startTime) % 60000) / 1000)}s
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Current Time</div>
+                <div className="text-lg font-mono font-bold text-green-400">
+                   {new Date(currentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-2">
+            <input 
+              type="range"
+              min={startTime}
+              max={endTime}
+              value={currentTime}
+              onChange={(e) => {
+                setIsOverlayPlaying(false)
+                setCurrentTime(Number(e.target.value))
+              }}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-green-400 hover:bg-white/20 transition"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold italic tracking-tight">MATCH DASHBOARD</h2>
+          <p className="text-sm text-white/50">Manage match playback and real-time overlay data</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            to="/overlay"
+            state={{ rawText }}
+            target="_blank"
+            className="group flex items-center gap-2 rounded-xl bg-electric/20 border border-electric/40 px-6 py-3 text-sm font-black text-electric transition hover:bg-electric/30 hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(103,65,202,0.2)]"
+          >
+            <span className="uppercase tracking-widest">Open Overlay</span>
+            <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </Link>
+        </div>
+      </div>
+
       <div className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-[0_20px_60px_rgba(8,10,26,0.45)]">
         <div className="space-y-2">
           <h2 className="text-lg font-semibold">Nhap file</h2>
